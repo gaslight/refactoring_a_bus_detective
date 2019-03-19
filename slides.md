@@ -9,7 +9,8 @@
 * A brief history of Bus Detective
 * Learn you a GTFS
 * The rewrite
-* What we learned
+* How Elixir helped
+* How Web Components helped
 
 ---
 
@@ -60,6 +61,10 @@
 
 ---
 
+![Bus Ad](bus_ad.jpg)
+
+---
+
 ## Monetization is hard :(
 * Ideas didn't quite pan out
 * 0 revenue is hard to sustain
@@ -82,23 +87,26 @@
 
 ---
 
-## [Bus Detective NG](app.busdetective.com)
+## [Bus Detective NG](https://app.busdetective.com)
+* Elixir
+* Web Components
+* Moving busses
+* PWA
 
 ---
 
-## Why Elixir?
+## Why Elixir
+* Language
+* Framework
+* Platform
+
+---
+
+## Elixir
 * Functional language
-* Erlang VM
+* Immutability
 * Ruby inspired syntax
-
----
-
-## Phoenix
-* MVC Web framework for Elixir
-* Inspired by Rails
-* Ohio Made!
-* Ridonkulus performance
-* Channels
+* Easy transition
 
 ---
 
@@ -108,24 +116,70 @@
 
 ---
 
-## Searching for Stops
-* StopController
-* 
+## Pattern matching
+```elixir
+  def show(conn, params) do
+    case parse_params(params) do
+      {:ok, stop_id_params, options} ->
+        load_stop(conn, stop_id_params, options)
+
+      error ->
+        error
+    end
+  end
+```
 
 ---
 
-## Erlang
+## Pattern matching in function head
+```elixir
+  defp load_stop(conn, [stop_id], _options) do
+    ...
+  end
+
+  defp load_stop(conn, [feed_id, stop_remote_id], options) do
+    ...
+  end
+
+```
+
+---
+
+## Pipeline operator
+```elixir
+  defp find_exact_stop_time_update(
+         %TripUpdate{stop_time_update: stop_time_updates},
+         stop_sequence
+       ) do
+    stop_time_updates
+    |> Enum.filter(&(is_nil(&1.stop_sequence) || &1.stop_sequence == stop_sequence))
+    |> Enum.at(0)
+    |> StopTimeUpdate.from_message()
+  end
+```
+
+---
+
+## Phoenix
+* MVC Web framework for Elixir
+* Inspired by Rails
+* Ohio Made!
+* Channels
+
+---
+
+## Elixir platform
+* Erlang VM
 * Designed for telco (Ericcson)
 * 20+ yrs old
-* Prolog inspired syntax
 
 ---
 
 ## OTP
-* 20 yrs of
-  * Distributed
-  * Scalable
-  * Fault tolerant
+* Open Telephony Platform
+* High concurrency
+* High availability
+* Distributed
 
 ---
 
@@ -138,7 +192,7 @@
 ---
 
 ## Bus Detective NG
-* Umbrella App
+* OTP Umbrella App
 * Bus Detective
 * Bus Detective Web
 * Importer
@@ -153,9 +207,37 @@
 
 ---
 
-# Let's see Realtime
-* Application
-* VehiclePositions
+## Responding to a message
+```elixir
+  def handle_call(
+        {:find_stop_time, trip_remote_id, stop_sequence},
+        _,
+        %{realtime_data: realtime_data} = state
+      ) do
+    stop_time_update =
+      StopTimeUpdateFinder.find_stop_time_update( realtime_data, trip_remote_id, stop_sequence)
+
+    {:reply, {:ok, stop_time_update}, state}
+  end
+```
+
+---
+
+## Realtime Application
+```elixir
+  def start(_type, _args) do
+    children =
+      [
+        {Registry, keys: :unique, name: TripUpdates},
+        {Registry, keys: :unique, name: VehiclePositions},
+        {Registry, keys: :duplicate, name: Registry.Realtime, id: Registry.Realtime}
+      ] ++ trip_updates_children() ++ vehicle_positions_children()
+
+    opts = [strategy: :one_for_one, name: Realtime.Supervisor]
+
+    Supervisor.start_link(children, opts)
+  end
+```
 
 ---
 
@@ -163,6 +245,7 @@
 * So fast
 * No polling
 * upsert
+* No architecture!
 
 ---
 
@@ -178,15 +261,11 @@
 
 ---
 
-## Do we need a SPA?
-* Gaslight "Rule 0"
-* But mebbe not...
-* Let's try not!
-
----
-
-## But we eventually do need some javascript
-How to do?
+## Front-end rewrite
+* Gave up on EmberJS :(
+* Moved everything to SSR
+* Sprinkled in some javascript
+* Refactored to Web Components
 
 ---
 
@@ -197,13 +276,31 @@ How to do?
 
 ---
 
-## Please allow me to climb onto my soapbox
-* Remember jQuery and Coffeescript?
-* Proprietary components will join this list
+```javascript
+class Timestamp extends HTMLElement {
+  get timestamp () {
+    return this.getAttribute('timestamp');
+  }
+
+  get displayedTimestamp () {
+    return moment(this.timestamp).fromNow();
+  }
+
+  connectedCallback () {
+    const update = () => {
+      this.innerHTML = this.displayedTimestamp;
+      setTimeout(update, 1000);
+    };
+    update();
+  }
+}
+```
 
 ---
 
-### [Refactoring to Web Components](https://github.com/bus-detective/bus_detective_ng/commit/87bdedf25d3b30f2243c4475217ef799d12c2394?diff=split)
+## Please allow me to climb onto my soapbox
+* Remember jQuery and Coffeescript?
+* Proprietary components will join this list
 
 ---
 
@@ -222,8 +319,76 @@ How to do?
 
 ---
 
-## Let's see some!
-Let's look at bd-map all growned up
+## Moving busses explained 
+
+---
+
+### Listening for a message
+```javascript
+channel.on('vehicle_positions', message => {
+  dispatch(document, 'updateVehiclePositions',  
+    message.vehicle_positions);
+  console.log('Received Vehicle Positions', message);
+});
+```
+
+---
+
+### Reducer
+```javascript
+const updateVehiclePositions = (state, vehiclePositions) => {
+  return Object.assign({}, state, { vehiclePositions });
+};
+```
+
+---
+
+### Subscriber
+```javascript
+'bd-stop-map': 
+  (
+    { mapExpanded, vehiclePositions, tripShapes },
+    element
+  ) => {
+    ...
+    element.setAttribute('vehicle-positions',
+    JSON.stringify(vehiclePositions));
+  }
+```
+
+---
+
+### StopMap vehiclePositions accessor
+```javascript
+  get vehiclePositions () {
+    return this.getAttribute('vehicle-positions')
+      ? JSON.parse(this.getAttribute('vehicle-positions')) : [];
+  }
+```
+
+---
+
+### Rendering on the map
+```javascript
+this.vehiclePositions.forEach((vehiclePosition) => {
+  ...
+  let busMarker = Leaflet.marker([vehiclePosition.latitude, vehiclePosition.longitude], {icon: busIcon});
+  busMarker.bindTooltip(
+    `
+    <div class="map-bus-label" 
+      style="background-color: #${vehiclePosition.route_color}; color: #${vehiclePosition.route_text_color};">
+      ${vehiclePosition.route_name}
+    </div>
+  `,
+    {permanent: true, direction: 'top'});
+  busMarker.addTo(this.map);
+});
+```
+
+---
+
+## It's open source!
+[github.com/bus-detective/bus_detective_ng](https://github.com/bus-detective/bus_detective_ng)
 
 ---
 
@@ -234,8 +399,8 @@ Let's look at bd-map all growned up
 
 ---
 
-## Bonus things!
-* Moving busses on the map
+## Stuff we didn't get to
+* Cordova
 * PWA
 * Load your own city!
 
