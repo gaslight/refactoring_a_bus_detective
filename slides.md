@@ -18,7 +18,6 @@
 * In February 2015, Gaslight moved downtown
 * It was cold and people wanted to know when their bus would actually get there
 * Kevin Rockwood discovered a GTFS feed for Metro
-* He wrote some code...
 
 ---
 
@@ -66,7 +65,8 @@
 ---
 
 ## Monetization is hard :(
-* Ideas didn't quite pan out
+* Didn't wanna charge for app
+* Other ideas didn't quite pan out
 * 0 revenue is hard to sustain
 * Led to some loss of interest
 
@@ -81,13 +81,13 @@
 ---
 
 ## The rewrite
-* Tim got tired of seeing the error page
+* Tim Mecklem got tired of seeing the error page
 * Plan was to just rewrite importer in Elixir
 * It kinda got out of hand :)
 
 ---
 
-## [Bus Detective NG](https://app.busdetective.com)
+## [Bus Detective NG](https://colum-busdetective.herokuapp.com)
 * Elixir
 * Web Components
 * Moving busses
@@ -117,21 +117,6 @@
 ---
 
 ## Pattern matching
-```elixir
-  def show(conn, params) do
-    case parse_params(params) do
-      {:ok, stop_id_params, options} ->
-        load_stop(conn, stop_id_params, options)
-
-      error ->
-        error
-    end
-  end
-```
-
----
-
-## Pattern matching in function head
 ```elixir
   defp load_stop(conn, [stop_id], _options) do
     ...
@@ -183,31 +168,15 @@
 
 ---
 
-## OTP ideas
-* Processes
+## OTP concepts
+* Processes (GenServers)
 * Supervisors
 * Applications
 * Let it Crash!
 
 ---
 
-## Bus Detective NG
-* OTP Umbrella App
-* Bus Detective
-* Bus Detective Web
-* Importer
-* Realtime
-
----
-
-## GenServer
-* A stateful process
-* Responds to messages
-* Managed by supervisors
-
----
-
-## Responding to a message
+### GenServer responding to a message
 ```elixir
   def handle_call(
         {:find_stop_time, trip_remote_id, stop_sequence},
@@ -223,28 +192,20 @@
 
 ---
 
-## Realtime Application
-```elixir
-  def start(_type, _args) do
-    children =
-      [
-        {Registry, keys: :unique, name: TripUpdates},
-        {Registry, keys: :unique, name: VehiclePositions},
-        {Registry, keys: :duplicate, name: Registry.Realtime, id: Registry.Realtime}
-      ] ++ trip_updates_children() ++ vehicle_positions_children()
-
-    opts = [strategy: :one_for_one, name: Realtime.Supervisor]
-
-    Supervisor.start_link(children, opts)
-  end
-```
+## Bus Detective NG
+* OTP Umbrella App
+* Bus Detective
+* Bus Detective Web
+* Importer
+* Realtime
 
 ---
 
 ## Elixir wins
 * So fast
 * No polling
-* upsert
+* Less $
+* Letting it crash
 * No architecture!
 
 ---
@@ -276,16 +237,10 @@
 
 ---
 
+## bd-timestamp
 ```javascript
 class Timestamp extends HTMLElement {
-  get timestamp () {
-    return this.getAttribute('timestamp');
-  }
-
-  get displayedTimestamp () {
-    return moment(this.timestamp).fromNow();
-  }
-
+  ...
   connectedCallback () {
     const update = () => {
       this.innerHTML = this.displayedTimestamp;
@@ -294,6 +249,14 @@ class Timestamp extends HTMLElement {
     update();
   }
 }
+customElements.define('bd-timestamp', Timestamp);
+```
+
+---
+
+## It's just html...
+```html
+<bd-timestamp timestamp="2019-03-21T18:22:55+00:00"></bd-timestamp>
 ```
 
 ---
@@ -316,6 +279,7 @@ class Timestamp extends HTMLElement {
 * emits new state on custom events
 * passes data to components on state change
 * kinda like a lighter, simpler redux
+* 27 lines of js
 
 ---
 
@@ -358,11 +322,15 @@ const updateVehiclePositions = (state, vehiclePositions) => {
 
 ---
 
-### StopMap vehiclePositions accessor
+### Listening for attribute changes
 ```javascript
-  get vehiclePositions () {
-    return this.getAttribute('vehicle-positions')
-      ? JSON.parse(this.getAttribute('vehicle-positions')) : [];
+  static get observedAttributes () {
+    return ['expanded', 'vehicle-positions', 'trip-shapes'];
+  }
+
+  attributeChangedCallback () {
+    this.displayVehicles();
+    ...
   }
 ```
 
